@@ -1,0 +1,11 @@
+[package]
+name = "net-tools-rs"
+version = "0.1.0"
+edition = "2024"
+authors = [
+  "Nadzeya Hutsko <nadzya.info@gmail.com>",
+  "Lena Voytek <lena@voytek.dev>",
+]
+license = "MIT"
+
+[dependencies]
