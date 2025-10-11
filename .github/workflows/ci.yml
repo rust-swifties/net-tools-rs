@@ -1,0 +1,94 @@
+name: CI
+
+permissions: read-all
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  merge_group:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust from apt
+        run: |
+          sudo apt update
+          sudo apt install -y cargo rustc
+
+      - name: Build
+        run: cargo build --workspace --all-targets
+
+      - name: Run tests
+        run: cargo test --workspace --all-targets
+
+  format:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust from apt
+        run: |
+          sudo apt update
+          sudo apt install -y cargo rustc rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    needs: format
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust from apt
+        run: |
+          sudo apt update
+          sudo apt install -y cargo rustc rust-clippy
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets -- --deny warnings
+
+  docs:
+    needs: clippy
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust from apt
+        run: |
+          sudo apt update
+          sudo apt install -y cargo rustc
+
+      - name: Build docs
+        run: cargo doc --no-deps --document-private-items
+
+  audit:
+    needs: clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust from apt
+        run: |
+          sudo apt update
+          sudo apt install -y cargo rustc
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run audit
+        run: cargo audit
