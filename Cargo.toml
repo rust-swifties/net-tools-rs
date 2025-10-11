@@ -18,6 +18,10 @@ thiserror = "2.0"
 name = "hostname"
 path = "bin/hostname.rs"
 
+[[bin]]
+name = "nameif"
+path = "bin/nameif.rs"
+
 [lints.rust]
 unsafe_op_in_unsafe_fn = { level = "deny" }
 
