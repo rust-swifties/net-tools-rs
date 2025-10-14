@@ -1,0 +1,25 @@
+name: Compliance Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  compliance-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build compliance test image
+      run: docker build -f compliance-tests/Dockerfile -t net-tools-compliance .
+
+    - name: Run compliance tests
+      run: |
+        docker run --rm \
+          --privileged \
+          --cap-add=NET_ADMIN \
+          --cap-add=SYS_ADMIN \
+          net-tools-compliance
