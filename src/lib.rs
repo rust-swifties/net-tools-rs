@@ -1,7 +1,9 @@
+pub mod arp;
 pub mod error;
 pub mod hostname;
 pub mod nameif;
 
+pub use arp::main as arp_main;
 pub use error::{NetToolsError, Result};
 pub use hostname::main as hostname_main;
 pub use nameif::main as nameif_main;
