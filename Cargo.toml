@@ -18,6 +18,10 @@ nix = { version = "0.30", features = ["hostname", "net"] }
 thiserror = "2.0"
 
 [[bin]]
+name = "arp"
+path = "bin/arp.rs"
+
+[[bin]]
 name = "hostname"
 path = "bin/hostname.rs"
 
