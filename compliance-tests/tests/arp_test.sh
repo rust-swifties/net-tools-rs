@@ -46,9 +46,19 @@ cleanup() {
     ip link delete veth2 2>/dev/null || true
     ip link delete veth3 2>/dev/null || true
     ip netns delete arp_test 2>/dev/null || true
+
+    sed -i '/test-short-name/d' /etc/hosts 2>/dev/null || true
+    sed -i '/test-very-long-hostname-that-exceeds-twentythree-characters/d' /etc/hosts 2>/dev/null || true
+
+    # Restore DNS configuration
+    echo "nameserver 8.8.8.8" > /etc/resolv.conf
 }
 
 setup_test_arp_entries() {
+    # Configure DNS to prevent external network queries during reverse lookup
+    # This prevents the race condition where DNS triggers gateway ARP
+    echo "nameserver 127.0.0.1" > /etc/resolv.conf
+
     ip link add veth0 type veth peer name veth1
     ip addr add 192.168.100.1/24 dev veth0
     ip addr add 192.168.100.2/24 dev veth1
@@ -67,10 +77,14 @@ setup_test_arp_entries() {
     ping -c 1 -W 1 192.168.101.2 >/dev/null 2>&1 || true
 
     # Add a static permanent entry to test ATF_PERM flag
-    # Use a dummy MAC address for testing
     arp -s 192.168.100.10 aa:bb:cc:dd:ee:01 -i veth0 >/dev/null 2>&1 || true
-
     arp -s 192.168.101.10 aa:bb:cc:dd:ee:02 -i veth2 >/dev/null 2>&1 || true
+
+    # Add temporary /etc/hosts entries for reverse lookup testing
+    echo "192.168.100.50 test-short-name" >> /etc/hosts
+    echo "192.168.100.51 test-very-long-hostname-that-exceeds-twentythree-characters.example.com" >> /etc/hosts
+    arp -s 192.168.100.50 bb:cc:dd:ee:ff:01 -i veth0 >/dev/null 2>&1 || true
+    arp -s 192.168.100.51 bb:cc:dd:ee:ff:02 -i veth0 >/dev/null 2>&1 || true
 
     # Wait for ARP entries to stabilize
     sleep 0.5
@@ -145,7 +159,6 @@ test_bsd_style_flag() {
 test_invalid_hostname() {
     echo -n "test arp::test_invalid_hostname ... "
     cleanup
-    setup_test_arp_entries
 
     set +e
     $ORIGINAL_ARP invalid.hostname.that.does.not.exist.12345 >/tmp/original_invalid 2>&1
@@ -160,8 +173,6 @@ test_invalid_hostname() {
     else
         fail "arp::test_invalid_hostname"
     fi
-
-    cleanup
 }
 
 test_device_filter() {
