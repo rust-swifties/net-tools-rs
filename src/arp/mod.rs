@@ -4,6 +4,7 @@ mod hwtype;
 
 use crate::{NetToolsError, RELEASE, Result};
 use clap::Parser;
+use dns_lookup::lookup_addr;
 use hwtype::{hwtype_num_to_name, hwtype_to_num};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -302,6 +303,13 @@ fn display_linux_style(entries: &[ArpEntry], numeric: bool) -> Result<usize> {
             &resolved_hostname
         };
 
+        // Truncate hostname to 23 characters max to match original C implementation
+        let truncated_hostname = if hostname.len() > 23 {
+            &hostname[..23]
+        } else {
+            hostname
+        };
+
         let hw_name = hwtype_num_to_name(entry.hw_type);
         let flags_str = format_flags(entry.flags);
         let mask = if entry.mask == "*" { "" } else { &entry.mask };
@@ -314,18 +322,18 @@ fn display_linux_style(entries: &[ArpEntry], numeric: bool) -> Result<usize> {
             if (entry.flags & libc::ATF_PUBL) != 0 {
                 println!(
                     "{:<23}  {:<8}{:<20}{:<6}{:<15} {}",
-                    hostname, "*", "<from_interface>", flags_str, mask, entry.device
+                    truncated_hostname, "*", "<from_interface>", flags_str, mask, entry.device
                 );
             } else {
                 println!(
                     "{:<23}  {:<8}{:<20}{:<6}{:<15} {}",
-                    hostname, "", "(incomplete)", flags_str, mask, entry.device
+                    truncated_hostname, "", "(incomplete)", flags_str, mask, entry.device
                 );
             }
         } else {
             println!(
                 "{:<23}  {:<8}{:<20}{:<6}{:<15} {}",
-                hostname, hw_name, entry.mac, flags_str, mask, entry.device
+                truncated_hostname, hw_name, entry.mac, flags_str, mask, entry.device
             );
         }
     }
@@ -421,9 +429,10 @@ fn resolve_or_passthrough(host: &str, verbose: bool) -> Result<String> {
     Ok(addr.ip().to_string())
 }
 
-/// Reverse DNS lookup - not implemented yet
-fn reverse_lookup(_ip: &str) -> Option<String> {
-    None
+/// Reverse DNS lookup
+fn reverse_lookup(ip: &str) -> Option<String> {
+    let addr: IpAddr = ip.parse().ok()?;
+    lookup_addr(&addr).ok()
 }
 
 fn arp_del(_args: &Args) -> Result<()> {
@@ -671,5 +680,19 @@ mod tests {
 
         let filtered = filter_entries(entries, Some("192.168.1.2"), None, None, false).unwrap();
         assert_eq!(filtered.len(), 0);
+    }
+
+    #[test]
+    fn test_reverse_lookup_localhost() {
+        let result = reverse_lookup("127.0.0.1");
+        assert!(result.is_some());
+        let hostname = result.unwrap();
+        assert!(hostname.contains("localhost") || hostname.contains("127.0.0.1"));
+    }
+
+    #[test]
+    fn test_reverse_lookup_invalid_ip() {
+        let result = reverse_lookup("invalid");
+        assert!(result.is_none());
     }
 }

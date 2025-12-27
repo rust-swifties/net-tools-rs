@@ -13,6 +13,7 @@ categories = ["command-line-interface"]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
+dns-lookup = "3"
 libc = "0.2"
 nix = { version = "0.30", features = ["hostname", "net"] }
 thiserror = "2.0"
