@@ -151,7 +151,7 @@ dependencies = [
 
 [[package]]
 name = "net-tools-rs"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "libc",
