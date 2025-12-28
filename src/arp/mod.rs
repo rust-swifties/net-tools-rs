@@ -652,10 +652,71 @@ fn arp_set(args: &Args) -> Result<()> {
     Ok(())
 }
 
-fn arp_file(_args: &Args) -> Result<()> {
-    Err(NetToolsError::Other(
-        "arp -f not yet implemented".to_string(),
-    ))
+/// Read ARP entries from a file
+fn arp_file(args: &Args) -> Result<()> {
+    let filename = if args.args.is_empty() {
+        "/etc/ethers"
+    } else {
+        &args.args[0]
+    };
+
+    let file = File::open(filename)
+        .map_err(|_| NetToolsError::Other(format!("arp: cannot open etherfile {} !", filename)))?;
+
+    let reader = BufReader::new(file);
+    let mut linenr = 0;
+
+    for line in reader.lines() {
+        let line = line.map_err(NetToolsError::Io)?;
+        linenr += 1;
+
+        if args.verbose {
+            eprintln!(">> {}", line);
+        }
+
+        // Skip empty lines and comments
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        // Parse the line: <hostname> <hwaddr> [args...]
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        if parts.len() < 2 {
+            eprintln!(
+                "arp: format error on line {} of etherfile {} !",
+                linenr, filename
+            );
+            continue;
+        }
+
+        // Build arguments for arp_set
+        let file_args = Args {
+            all: false,
+            linux_style: false,
+            delete: false,
+            set: true,
+            file: false,
+            numeric: args.numeric,
+            verbose: args.verbose,
+            device: args.device.clone(),
+            use_device: false,
+            protocol: args.protocol.clone(),
+            hw_type: args.hw_type.clone(),
+            symbolic: false,
+            args: parts.iter().map(|s| s.to_string()).collect(),
+        };
+
+        if arp_set(&file_args).is_err() {
+            eprintln!(
+                "arp: cannot set entry on line {} of etherfile {} !",
+                linenr, filename
+            );
+            continue;
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

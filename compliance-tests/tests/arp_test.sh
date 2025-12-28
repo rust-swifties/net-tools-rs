@@ -419,6 +419,55 @@ test_arp_delete_nonexistent() {
     cleanup
 }
 
+test_arp_file_basic() {
+    echo -n "test arp::test_arp_file_basic ... "
+    cleanup
+    setup_test_arp_entries
+
+    cat >/tmp/test_ethers <<EOF
+192.168.100.80 aa:bb:cc:dd:ee:80
+192.168.100.81 aa:bb:cc:dd:ee:81
+EOF
+
+    set +e
+    $ORIGINAL_ARP -f /tmp/test_ethers >/tmp/original_file 2>&1
+    ORIG_EXIT=$?
+
+    $RUST_ARP -f /tmp/test_ethers >/tmp/rust_file 2>&1
+    RUST_EXIT=$?
+    set -e
+
+    if [ "$ORIG_EXIT" -eq "$RUST_EXIT" ] && compare_output /tmp/original_file /tmp/rust_file "test_arp_file_basic"; then
+        pass
+    else
+        fail "arp::test_arp_file_basic"
+    fi
+
+    cleanup
+    rm -f /tmp/test_ethers
+}
+
+test_arp_file_nonexistent() {
+    echo -n "test arp::test_arp_file_nonexistent ... "
+    cleanup
+
+    set +e
+    $ORIGINAL_ARP -f /tmp/nonexistent_file_12345 >/tmp/original_file_noent 2>&1
+    ORIG_EXIT=$?
+
+    $RUST_ARP -f /tmp/nonexistent_file_12345 >/tmp/rust_file_noent 2>&1
+    RUST_EXIT=$?
+    set -e
+
+    if [ "$ORIG_EXIT" -eq "$RUST_EXIT" ] && [ "$ORIG_EXIT" -ne 0 ] && compare_output /tmp/original_file_noent /tmp/rust_file_noent "test_arp_file_nonexistent"; then
+        pass
+    else
+        fail "arp::test_arp_file_nonexistent"
+    fi
+
+    cleanup
+}
+
 echo "running arp tests"
 test_default_display
 test_numeric_flag
@@ -435,6 +484,8 @@ test_arp_set_basic
 test_arp_set_with_pub
 test_arp_delete_existing
 test_arp_delete_nonexistent
+test_arp_file_basic
+test_arp_file_nonexistent
 
 echo
 if [ $FAILED -gt 0 ]; then
