@@ -9,7 +9,8 @@ authors = [
 license = "GPL-2.0-or-later"
 description = "Rust implementation of net-tools (Linux networking base tools)"
 repository = "https://github.com/rust-swifties/net-tools-rs"
-categories = ["command-line-interface"]
+keywords = ["cli", "ifconfig", "hostname", "arp", "netstat"]
+categories = ["command-line-utilities", "network-programming"]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
