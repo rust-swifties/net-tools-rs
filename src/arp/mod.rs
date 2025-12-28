@@ -437,10 +437,129 @@ fn reverse_lookup(ip: &str) -> Option<String> {
     lookup_addr(&addr).ok()
 }
 
-fn arp_del(_args: &Args) -> Result<()> {
-    Err(NetToolsError::Other(
-        "arp -d not yet implemented".to_string(),
-    ))
+/// Delete an ARP entry
+fn arp_del(args: &Args) -> Result<()> {
+    if args.args.is_empty() {
+        return Err(NetToolsError::Other("arp: need host name".to_string()));
+    }
+
+    let host = &args.args[0];
+    let mut flags = 0;
+    let mut device: Option<String> = args.device.clone();
+    let mut netmask: Option<String> = None;
+
+    // Parse additional arguments
+    let mut i = 1;
+    while i < args.args.len() {
+        match args.args[i].as_str() {
+            "pub" => flags |= libc::ATF_PUBL,
+            "priv" => flags &= !libc::ATF_PUBL,
+            "temp" => flags &= !libc::ATF_PERM,
+            "netmask" => {
+                i += 1;
+                if i >= args.args.len() {
+                    return Err(NetToolsError::Other("arp: need netmask value".to_string()));
+                }
+                netmask = Some(args.args[i].clone());
+            }
+            "dev" => {
+                i += 1;
+                if i >= args.args.len() {
+                    return Err(NetToolsError::Other("arp: need device name".to_string()));
+                }
+                device = Some(args.args[i].clone());
+            }
+            _ => {
+                return Err(NetToolsError::Other(format!(
+                    "arp: invalid argument: {}",
+                    args.args[i]
+                )));
+            }
+        }
+        i += 1;
+    }
+
+    let ip = resolve_or_passthrough(host, args.verbose)?;
+
+    // SAFETY: Creating a socket with valid domain, type, and protocol
+    let sockfd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+    if sockfd < 0 {
+        return Err(NetToolsError::Io(std::io::Error::last_os_error()));
+    }
+
+    // SAFETY: Initialize arpreq structure with zeros
+    let mut req: libc::arpreq = unsafe { mem::zeroed() };
+
+    let ip_addr: Ipv4Addr = ip
+        .parse()
+        .map_err(|_| NetToolsError::Other(format!("arp: invalid IP address: {}", ip)))?;
+
+    // SAFETY: Casting to sockaddr_in to set IP address
+    let sa = unsafe { &mut *(&mut req.arp_pa as *mut libc::sockaddr as *mut libc::sockaddr_in) };
+    sa.sin_family = libc::AF_INET as libc::sa_family_t;
+    sa.sin_addr.s_addr = u32::from(ip_addr).to_be();
+
+    if let Some(ref dev) = device {
+        let dev_bytes = dev.as_bytes();
+        if dev_bytes.len() >= libc::IFNAMSIZ {
+            // SAFETY: Closing the socket before returning error
+            unsafe {
+                libc::close(sockfd);
+            }
+            return Err(NetToolsError::Other(format!(
+                "arp: device name too long: {}",
+                dev
+            )));
+        }
+        // SAFETY: Casting byte slice to c_char slice for copy
+        // Both types are single-byte and the length is preserved
+        req.arp_dev[..dev_bytes.len()]
+            .copy_from_slice(unsafe { &*(dev_bytes as *const [u8] as *const [libc::c_char]) });
+    }
+
+    if let Some(ref mask) = netmask {
+        let mask_addr: Ipv4Addr = mask.parse().map_err(|_| {
+            // SAFETY: Closing the socket before returning error
+            unsafe {
+                libc::close(sockfd);
+            }
+            NetToolsError::Other(format!("arp: invalid netmask: {}", mask))
+        })?;
+
+        // SAFETY: Casting to sockaddr_in to set netmask
+        let mask_sa = unsafe {
+            &mut *(&mut req.arp_netmask as *mut libc::sockaddr as *mut libc::sockaddr_in)
+        };
+        mask_sa.sin_family = libc::AF_INET as libc::sa_family_t;
+        mask_sa.sin_addr.s_addr = u32::from(mask_addr).to_be();
+        flags |= libc::ATF_NETMASK;
+    }
+
+    req.arp_flags = flags;
+
+    // Perform the delete operation
+    // SAFETY: Calling ioctl with valid socket fd and properly initialized arpreq structure
+    let result = unsafe { libc::ioctl(sockfd, libc::SIOCDARP as _, &req) };
+
+    // SAFETY: Close the socket
+    unsafe {
+        libc::close(sockfd);
+    }
+
+    if result < 0 {
+        let err = std::io::Error::last_os_error();
+        match err.raw_os_error() {
+            Some(libc::ENXIO) | Some(libc::ENOENT) => {
+                eprintln!("No ARP entry for {}", host);
+                std::process::exit(255);
+            }
+            _ => {
+                return Err(NetToolsError::Other(format!("SIOCDARP: {}", err)));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Set/add an ARP entry

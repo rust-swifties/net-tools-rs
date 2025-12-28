@@ -372,6 +372,53 @@ test_arp_set_with_pub() {
     cleanup
 }
 
+test_arp_delete_existing() {
+    echo -n "test arp::test_arp_delete_existing ... "
+    cleanup
+    setup_test_arp_entries
+
+    set +e
+    $ORIGINAL_ARP -d 192.168.100.10 >/tmp/original_del 2>&1
+    ORIG_EXIT=$?
+
+    # Recreate for rust test
+    arp -s 192.168.100.10 aa:bb:cc:dd:ee:01 -i veth0 >/dev/null 2>&1
+
+    $RUST_ARP -d 192.168.100.10 >/tmp/rust_del 2>&1
+    RUST_EXIT=$?
+    set -e
+
+    if [ "$ORIG_EXIT" -eq "$RUST_EXIT" ] && compare_output /tmp/original_del /tmp/rust_del "test_arp_delete_existing"; then
+        pass
+    else
+        fail "arp::test_arp_delete_existing"
+    fi
+
+    cleanup
+}
+
+test_arp_delete_nonexistent() {
+    echo -n "test arp::test_arp_delete_nonexistent ... "
+    cleanup
+    setup_test_arp_entries
+
+    set +e
+    $ORIGINAL_ARP -d 192.168.100.99 >/tmp/original_del_noent 2>&1
+    ORIG_EXIT=$?
+
+    $RUST_ARP -d 192.168.100.99 >/tmp/rust_del_noent 2>&1
+    RUST_EXIT=$?
+    set -e
+
+    if [ "$ORIG_EXIT" -eq "$RUST_EXIT" ] && [ "$ORIG_EXIT" -ne 0 ] && compare_output /tmp/original_del_noent /tmp/rust_del_noent "test_arp_delete_nonexistent"; then
+        pass
+    else
+        fail "arp::test_arp_delete_nonexistent"
+    fi
+
+    cleanup
+}
+
 echo "running arp tests"
 test_default_display
 test_numeric_flag
@@ -386,6 +433,8 @@ test_invalid_hwtype
 test_bsd_with_device
 test_arp_set_basic
 test_arp_set_with_pub
+test_arp_delete_existing
+test_arp_delete_nonexistent
 
 echo
 if [ $FAILED -gt 0 ]; then
