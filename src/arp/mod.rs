@@ -1,5 +1,6 @@
 //! Rust implementation of the arp command from net-tools
 
+mod arpreq;
 mod hwtype;
 
 use crate::{NetToolsError, RELEASE, Result};
@@ -8,7 +9,8 @@ use dns_lookup::lookup_addr;
 use hwtype::{hwtype_num_to_name, hwtype_to_num};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::net::{IpAddr, ToSocketAddrs};
+use std::mem;
+use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -441,10 +443,94 @@ fn arp_del(_args: &Args) -> Result<()> {
     ))
 }
 
-fn arp_set(_args: &Args) -> Result<()> {
-    Err(NetToolsError::Other(
-        "arp -s not yet implemented".to_string(),
-    ))
+/// Set/add an ARP entry
+fn arp_set(args: &Args) -> Result<()> {
+    let mut options = arpreq::parse_set_args(&args.args, args.use_device, args.device.clone())?;
+
+    let ip = resolve_or_passthrough(&options.host, args.verbose)?;
+
+    // SAFETY: Creating a socket with valid domain, type, and protocol
+    let sockfd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+    if sockfd < 0 {
+        return Err(NetToolsError::Io(std::io::Error::last_os_error()));
+    }
+
+    // SAFETY: Initialize arpreq structure with zeros
+    let mut req: libc::arpreq = unsafe { mem::zeroed() };
+
+    arpreq::set_ip(&mut req, &ip).inspect_err(|_e| {
+        // SAFETY: Closing valid socket fd before error return
+        unsafe {
+            libc::close(sockfd);
+        }
+    })?;
+
+    // Set MAC address (from device or string)
+    if options.use_device {
+        if let Some(ref dev) = options.device {
+            arpreq::set_mac_from_device(sockfd, &mut req, dev).inspect_err(|_e| {
+                // SAFETY: Closing valid socket fd before error return
+                unsafe {
+                    libc::close(sockfd);
+                }
+            })?;
+        }
+    } else {
+        arpreq::set_mac_from_string(&mut req, &options.mac).inspect_err(|_e| {
+            // SAFETY: Closing valid socket fd before error return
+            unsafe {
+                libc::close(sockfd);
+            }
+        })?;
+    }
+
+    // Set device name if specified
+    if let Some(ref dev) = options.device {
+        arpreq::set_device(&mut req, dev).inspect_err(|_e| {
+            // SAFETY: Closing valid socket fd before error return
+            unsafe {
+                libc::close(sockfd);
+            }
+        })?;
+    }
+
+    // Set netmask if specified
+    if let Some(ref mask) = options.netmask {
+        arpreq::set_netmask(&mut req, mask, &mut options.flags).inspect_err(|_e| {
+            // SAFETY: Closing valid socket fd before error return
+            unsafe {
+                libc::close(sockfd);
+            }
+        })?;
+    }
+
+    req.arp_flags = options.flags;
+
+    if args.verbose {
+        eprintln!("arp: SIOCSARP()");
+    }
+
+    // SAFETY: Calling ioctl with valid socket fd and properly initialized arpreq structure
+    let result = unsafe { libc::ioctl(sockfd, libc::SIOCSARP as _, &req) };
+
+    // SAFETY: Close the socket
+    unsafe {
+        libc::close(sockfd);
+    }
+
+    if result < 0 {
+        let err = std::io::Error::last_os_error();
+        let err_msg = match err.raw_os_error() {
+            Some(libc::ENODEV) => "No such device",
+            Some(libc::EPERM) => "Operation not permitted",
+            Some(libc::EACCES) => "Permission denied",
+            Some(libc::ENXIO) => "No such device or address",
+            _ => return Err(NetToolsError::Io(err)),
+        };
+        return Err(NetToolsError::Other(format!("SIOCSARP: {}", err_msg)));
+    }
+
+    Ok(())
 }
 
 fn arp_file(_args: &Args) -> Result<()> {
