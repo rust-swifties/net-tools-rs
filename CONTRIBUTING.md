@@ -22,6 +22,33 @@ All submissions must:
 - Pass all tests (`cargo test`)
 - Include compliance tests for new commands/flags
 
+## Unsafe Code
+
+net-tools-rs cannot be entirely safe because we must interface with the Linux kernel's
+networking APIs through `libc` syscalls and ioctl operations. However, we want to limit
+and carefully control our use of `unsafe`.
+
+### When Unsafe is Acceptable
+
+- FFI with `libc`: Calling C functions, manipulating C structures (e.g., `arpreq`,
+  `ifreq`, `sockaddr`)
+- Kernel interfaces: ioctl calls, socket operations, raw pointer manipulation for system
+  calls
+- Performance: Only in exceptional cases with clear justification and benchmarks
+
+### Requirements for Unsafe Code
+
+1. Every unsafe block must include a `// SAFETY:` comment explaining:
+   - Why the operation is sound
+   - What invariants are being maintained
+   - What preconditions are required
+2. Minimize scope: Keep unsafe blocks as small as possible
+3. Encapsulation: Wrap unsafe operations in safe abstractions when practical
+4. Testing: Add unit tests for code containing unsafe blocks
+
+Before writing unsafe code, consider reading the
+[Rustonomicon](https://doc.rust-lang.org/nomicon/).
+
 ## Compliance Testing
 
 net-tools-rs must behave identically to original net-tools for compatibility. When adding
