@@ -328,6 +328,50 @@ test_bsd_with_device() {
     cleanup
 }
 
+test_arp_set_basic() {
+    echo -n "test arp::test_arp_set_basic ... "
+    cleanup
+    setup_test_arp_entries
+
+    set +e
+    $ORIGINAL_ARP -s 192.168.100.70 aa:bb:cc:dd:ee:70 >/tmp/original_set 2>&1
+    ORIG_EXIT=$?
+
+    $RUST_ARP -s 192.168.100.70 aa:bb:cc:dd:ee:70 >/tmp/rust_set 2>&1
+    RUST_EXIT=$?
+    set -e
+
+    if [ "$ORIG_EXIT" -eq "$RUST_EXIT" ] && compare_output /tmp/original_set /tmp/rust_set "test_arp_set_basic"; then
+        pass
+    else
+        fail "arp::test_arp_set_basic"
+    fi
+
+    cleanup
+}
+
+test_arp_set_with_pub() {
+    echo -n "test arp::test_arp_set_with_pub ... "
+    cleanup
+    setup_test_arp_entries
+
+    set +e
+    $ORIGINAL_ARP -s 192.168.100.71 aa:bb:cc:dd:ee:71 pub >/tmp/original_set_pub 2>&1
+    ORIG_EXIT=$?
+
+    $RUST_ARP -s 192.168.100.71 aa:bb:cc:dd:ee:71 pub >/tmp/rust_set_pub 2>&1
+    RUST_EXIT=$?
+    set -e
+
+    if [ "$ORIG_EXIT" -eq "$RUST_EXIT" ] && compare_output /tmp/original_set_pub /tmp/rust_set_pub "test_arp_set_with_pub"; then
+        pass
+    else
+        fail "arp::test_arp_set_with_pub"
+    fi
+
+    cleanup
+}
+
 echo "running arp tests"
 test_default_display
 test_numeric_flag
@@ -340,6 +384,8 @@ test_device_filter
 test_hwtype_filter
 test_invalid_hwtype
 test_bsd_with_device
+test_arp_set_basic
+test_arp_set_with_pub
 
 echo
 if [ $FAILED -gt 0 ]; then
